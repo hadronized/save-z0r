@@ -11,7 +11,11 @@ struct CLIOpt {
     help = "The index of the first loop to scrap."
   )]
   from: usize,
-  #[structopt(long, help = "The index of the last loop to scrap.")]
+  #[structopt(
+    long,
+    default_value = "7911",
+    help = "The index of the last loop to scrap."
+  )]
   to: usize,
   #[structopt(
     short = "d",

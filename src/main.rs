@@ -1,7 +1,11 @@
-use reqwest::blocking::{Client, Response};
-use std::fs::File;
-use std::io::Write as _;
+use futures::future::TryFutureExt as _;
+use reqwest::{Client, Response};
+use std::sync::mpsc::channel;
+use std::sync::Arc;
 use structopt::StructOpt;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt as _;
+use tokio::spawn;
 
 #[derive(Debug, StructOpt)]
 struct CLIOpt {
@@ -26,43 +30,54 @@ struct CLIOpt {
   dest_dir: String,
 }
 
-fn main() {
-  //https://z0r.de/L/z0r-de_1.swf
-
-  let cli_opt = CLIOpt::from_args();
-  let client = Client::new();
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+  let cli_opt = Arc::new(CLIOpt::from_args());
+  let client = Arc::new(Client::new());
+  let (control_flow_sx, control_flow_rx) = channel();
 
   for i in cli_opt.from..cli_opt.to {
-    let url = format!("https://z0r.de/L/z0r-de_{}.swf", i);
+    if control_flow_rx.try_recv().is_ok() {
+      break;
+    }
 
-    println!("scrapping loop {} ({})…", i, url);
-    match client.get(&url).send().and_then(Response::bytes) {
-      Ok(swf_bytes) => {
-        println!("\t…fetched");
-        let dest_path = format!("{}/loop_{}.swf", cli_opt.dest_dir, i);
+    let cli_opt = cli_opt.clone();
+    let client = client.clone();
+    let control_flow_sx = control_flow_sx.clone();
+    spawn(async move {
+      let url = format!("https://z0r.de/L/z0r-de_{}.swf", i);
 
-        match File::create(&dest_path) {
-          Ok(mut file) => {
-            let write = file.write_all(&swf_bytes);
-            if write.is_err() {
-              eprintln!("\t…cannot write SWF; aborting");
-              break;
-            } else {
-              println!("\t…written to {}", dest_path);
+      println!("scrapping loop {} ({})…", i, url);
+      match client.get(&url).send().and_then(Response::bytes).await {
+        Ok(swf_bytes) => {
+          println!("\t…fetched");
+          let dest_path = format!("{}/loop_{}.swf", cli_opt.dest_dir, i);
+
+          match File::create(&dest_path).await {
+            Ok(mut file) => {
+              let write = file.write_all(&swf_bytes).await;
+              if write.is_err() {
+                eprintln!("\t…cannot write SWF; aborting");
+                control_flow_sx.send(()).unwrap();
+              } else {
+                println!("\t…written to {}", dest_path);
+              }
+            }
+
+            Err(e) => {
+              eprintln!("cannot create {}: {}; aborting", dest_path, e);
+              control_flow_sx.send(()).unwrap();
             }
           }
+        }
 
-          Err(e) => {
-            eprintln!("cannot create {}: {}; aborting", dest_path, e);
-            break;
-          }
+        Err(e) => {
+          eprintln!("  error: {}", e);
+          control_flow_sx.send(()).unwrap();
         }
       }
-
-      Err(e) => {
-        eprintln!("  error: {}", e);
-        break;
-      }
-    }
+    });
   }
+
+  Ok(())
 }

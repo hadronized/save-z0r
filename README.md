@@ -20,8 +20,8 @@ This project contains a scrapper you can use to scrap loops from z0r.de. Just gi
 
 > If you don’t provide those arguments, `--from` defaults to `0` and `--to` defaults to `7911`.
 
-Currently, the scrapper only downloads the loops and puts them in `/tmp`. You can use the `--dest_dir` switch
-to put them in another directory.
+Currently, the scrapper only downloads the loops and puts them in your download directory. You can use the `--dest-dir` 
+switch to put them in another directory.
 
 Consult `--help` for further information on how to use the scrapper.
 

@@ -1,6 +1,6 @@
 use reqwest::blocking::{Client, Response};
-use std::fs::File;
-use std::io::Write as _;
+use std::{fs::File, process::exit};
+use std::{io::Write as _, path::PathBuf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -17,20 +17,20 @@ struct CLIOpt {
     help = "The index of the last loop to scrap."
   )]
   to: usize,
-  #[structopt(
-    short = "d",
-    long,
-    default_value = "/tmp",
-    help = "Where to put downloaded loops."
-  )]
-  dest_dir: String,
+  #[structopt(short = "d", long, help = "Where to put downloaded loops.")]
+  dest_dir: Option<PathBuf>,
 }
 
 fn main() {
-  //https://z0r.de/L/z0r-de_1.swf
-
   let cli_opt = CLIOpt::from_args();
   let client = Client::new();
+
+  let dest_dir = cli_opt.dest_dir.or(dirs::download_dir());
+  if dest_dir.is_none() {
+    eprintln!("destination directory is unknown; please provide one with the --dest-dir switch");
+    exit(1);
+  }
+  let dest_dir = dest_dir.unwrap();
 
   for i in cli_opt.from..cli_opt.to {
     let url = format!("https://z0r.de/L/z0r-de_{}.swf", i);
@@ -39,7 +39,7 @@ fn main() {
     match client.get(&url).send().and_then(Response::bytes) {
       Ok(swf_bytes) => {
         println!("\t…fetched");
-        let dest_path = format!("{}/loop_{}.swf", cli_opt.dest_dir, i);
+        let dest_path = format!("{}/loop_{}.swf", dest_dir.display(), i);
 
         match File::create(&dest_path) {
           Ok(mut file) => {
